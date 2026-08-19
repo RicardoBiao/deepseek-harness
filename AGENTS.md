@@ -148,3 +148,15 @@ Docs accompany every code change: update affected README and JSDoc contracts tog
 ## Vendoring policy
 
 `vendor/` packages are pinned source copies (manifest with upstream SHAs in [vendor/README.md](vendor/README.md)). Update via the sync procedure there; re-apply or retire the logged local modifications; rerun `pnpm run test && pnpm run build`.
+
+## Cursor Cloud specific instructions
+
+The repo is checked out at `/workspace`; the startup update script refreshes dependencies with `CI=true pnpm install`. Standard commands live in the `## Commands` section above.
+
+Node 24 is the version this environment targets (the CI-primary leg). `nvm`'s default is Node 24 and login shells resolve it automatically, so run `pnpm` build/test/dev commands from a tmux login shell (or `nvm use 24` first): the Shell tool's non-login default may resolve an older `/exec-daemon/node` that sits below the `engines` floor. `pnpm run test:snapshot` asserts empty subprocess stderr and only passes on Node 24 — Node 22 emits a `node:sqlite` ExperimentalWarning that trips those assertions.
+
+Install as `CI=true pnpm install`, never a bare `pnpm install`: the root `postinstall` installs lefthook git hooks and intentionally refuses to replace the Cursor-managed `core.hooksPath`, so a bare install exits 1 (the script self-skips when `CI=true`). `verify-deps-before-run` is disabled in the global pnpm config so `pnpm run <script>` does not re-trigger that failing install; rerun `CI=true pnpm install` yourself after changing dependencies.
+
+Two tests in `packages/skill/tool-skill/tests/tool-skill.spec.ts` fail only here: they hardcode `/workspace` as an empty agent cwd, but the real repo (carrying `.claude/skills` and `.agents/skills`) lives at that path, so its skills get discovered. This is a checkout-path artifact, not a defect — CI checks out elsewhere and the two pass there.
+
+No `DEEPSEEK_API_KEY` is needed for lint, typecheck, build, unit, or snapshot tests. To drive the agent (Web UI or headless) without a real key, start the keyless mock LLM and point the DeepSeek provider at it: `node --import tsx packages/test-support/llm-mock-server/src/bin.ts --sequence success --success-text "hi" --repeat-last --port 8000`, then `DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1 DEEPSEEK_API_KEY=dummy pnpm dsh web` (Web UI at `http://127.0.0.1:3080`) or the same env with `pnpm dsh --profile headless "task"`.
